@@ -110,7 +110,7 @@ impl ApplicationHandler for App<'_> {
                             for n in -size..=size {
                                 for m in -size..=size {
                                     self.cells.set_cell(
-                                        mid + n * UP + m * LEFT,
+                                        self.screen_pos + mid + n * UP + m * LEFT,
                                         Cell::new(self.place_cell.clone()),
                                     );
                                 }
@@ -231,7 +231,7 @@ impl ApplicationHandler for App<'_> {
                         for n in -size..=size {
                             for m in -size..=size {
                                 self.cells.set_cell(
-                                    mid + n * UP + m * LEFT,
+                                    self.screen_pos + mid + n * UP + m * LEFT,
                                     Cell::new(self.place_cell.clone()),
                                 );
                             }

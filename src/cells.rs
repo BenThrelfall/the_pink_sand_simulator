@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use rand::{seq::SliceRandom, Rng};
+use rand::Rng;
 use CellKind::*;
 
 use crate::point::{
