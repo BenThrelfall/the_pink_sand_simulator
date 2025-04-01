@@ -1,9 +1,10 @@
-use std::{
-    mem::swap,
-    sync::Arc,
-    time::Instant,
-};
+use std::{sync::Arc, time::Instant};
 
+use cells::cells::{
+    Cell,
+    CellKind::{self, *},
+    Cells,
+};
 use pixels::{Pixels, SurfaceTexture};
 use winit::{
     application::ApplicationHandler,
@@ -24,11 +25,11 @@ fn main() {
 
     let mut cells = Cells::new(WIDTH as usize, HEIGHT as usize);
 
-    cells.set_cell(21, 22, true);
-    cells.set_cell(20, 21, true);
-    cells.set_cell(21, 21, true);
-    cells.set_cell(21, 20, true);
-    cells.set_cell(22, 20, true);
+    cells.set_cell(21, 22, Cell::new(Water));
+    cells.set_cell(20, 21, Cell::new(Water));
+    cells.set_cell(21, 21, Cell::new(Water));
+    cells.set_cell(21, 20, Cell::new(Water));
+    cells.set_cell(22, 20, Cell::new(Water));
 
     let mut app = App {
         window: Default::default(),
@@ -37,7 +38,8 @@ fn main() {
         logical_time: 0.0,
         cells,
         cursor_pos: PhysicalPosition::new(0, 0),
-        mouse_down: false,
+        mouse_down: (false, false),
+        place_cell: Sand,
     };
 
     event_loop.run_app(&mut app).unwrap();
@@ -51,7 +53,8 @@ struct App<'a> {
     logical_time: f64,
     cells: Cells,
     cursor_pos: PhysicalPosition<u32>,
-    mouse_down: bool,
+    mouse_down: (bool, bool),
+    place_cell: CellKind,
 }
 
 impl ApplicationHandler for App<'_> {
@@ -94,12 +97,20 @@ impl ApplicationHandler for App<'_> {
                 while self.logical_time < self.timer.elapsed().as_secs_f64() {
                     updates += 1;
 
-                    //let func_time = Instant::now();
-                    self.cells.update();
+                    let cursor = self
+                        .cursor_pos
+                        .to_logical::<u32>(window.inner_size().width as f64 / WIDTH as f64);
 
-                    if self.logical_time % 2.0 < 0.1 {
-                        //   println!("{:.2}", func_time.elapsed().as_secs_f64() * 1000.0);
+                    match self.mouse_down {
+                        (true, _) => self.cells.set_cell(
+                            cursor.x as usize,
+                            cursor.y as usize,
+                            Cell::new(self.place_cell.clone()),
+                        ),
+                        (false, _) => (),
                     }
+
+                    self.cells.update_all();
 
                     self.logical_time += 1. / 15.;
                 }
@@ -121,6 +132,30 @@ impl ApplicationHandler for App<'_> {
                     winit::keyboard::PhysicalKey::Code(KeyCode::Escape),
                     winit::event::ElementState::Pressed,
                 ) => event_loop.exit(),
+                (
+                    winit::keyboard::PhysicalKey::Code(KeyCode::Digit1),
+                    winit::event::ElementState::Pressed,
+                ) => self.place_cell = Sand,
+                (
+                    winit::keyboard::PhysicalKey::Code(KeyCode::Digit2),
+                    winit::event::ElementState::Pressed,
+                ) => self.place_cell = Water,
+                (
+                    winit::keyboard::PhysicalKey::Code(KeyCode::Digit3),
+                    winit::event::ElementState::Pressed,
+                ) => self.place_cell = Honey,
+                (
+                    winit::keyboard::PhysicalKey::Code(KeyCode::Digit4),
+                    winit::event::ElementState::Pressed,
+                ) => self.place_cell = PinkSand,
+                (
+                    winit::keyboard::PhysicalKey::Code(KeyCode::Digit5),
+                    winit::event::ElementState::Pressed,
+                ) => self.place_cell = BlueSand,
+                (
+                    winit::keyboard::PhysicalKey::Code(KeyCode::Digit6),
+                    winit::event::ElementState::Pressed,
+                ) => self.place_cell = PurpleSand,
                 _ => (),
             },
             WindowEvent::MouseInput {
@@ -129,10 +164,16 @@ impl ApplicationHandler for App<'_> {
                 button,
             } => match (state, button) {
                 (winit::event::ElementState::Pressed, winit::event::MouseButton::Left) => {
-                    self.mouse_down = true;
+                    self.mouse_down.0 = true;
                 }
                 (winit::event::ElementState::Released, winit::event::MouseButton::Left) => {
-                    self.mouse_down = false;
+                    self.mouse_down.0 = false;
+                }
+                (winit::event::ElementState::Pressed, winit::event::MouseButton::Right) => {
+                    self.mouse_down.1 = true;
+                }
+                (winit::event::ElementState::Released, winit::event::MouseButton::Right) => {
+                    self.mouse_down.1 = false;
                 }
                 _ => (),
             },
@@ -144,9 +185,16 @@ impl ApplicationHandler for App<'_> {
                 let cursor = self
                     .cursor_pos
                     .to_logical::<u32>(window.inner_size().width as f64 / WIDTH as f64);
-                if self.mouse_down {
-                    self.cells
-                        .set_cell(cursor.x as usize, cursor.y as usize, true);
+
+                match self.mouse_down {
+                    (true, _) => {
+                        self.cells.set_cell(
+                            cursor.x as usize,
+                            cursor.y as usize,
+                            Cell::new(self.place_cell.clone()),
+                        );
+                    }
+                    _ => (),
                 }
             }
             WindowEvent::Resized(size) => {
@@ -157,86 +205,13 @@ impl ApplicationHandler for App<'_> {
     }
 }
 
-#[derive(Debug)]
-struct Cells {
-    x_size: usize,
-    y_size: usize,
-    data: Vec<bool>,
-    data_two: Vec<bool>,
-}
-
 fn draw(cells: &Cells, frame: &mut [u8]) {
     for (i, pixel) in frame.chunks_exact_mut(4).enumerate() {
         let x = i % WIDTH as usize;
         let y = i / WIDTH as usize;
 
-        let rgba = if cells.cell_at(x, y) {
-            [0xaf, 0xaf, 0xaf, 0xff]
-        } else {
-            [0x48, 0x48, 0x48, 0xff]
-        };
+        let rgba = cells.cell_at(x, y).colour();
 
         pixel.copy_from_slice(&rgba);
-    }
-}
-
-impl Cells {
-    pub fn new(x_size: usize, y_size: usize) -> Cells {
-        Cells {
-            data: vec![false; x_size * y_size],
-            x_size,
-            y_size,
-            data_two: vec![false; x_size * y_size],
-        }
-    }
-
-    #[inline]
-    pub fn cell_at(&self, x: usize, y: usize) -> bool {
-        self.data[x * self.y_size + y]
-    }
-
-    pub fn set_cell(&mut self, x: usize, y: usize, alive: bool) {
-        if x < self.x_size && y < self.y_size {
-            self.data[x * self.y_size + y] = alive;
-        }
-    }
-
-    fn set_cell_next(&mut self, x: usize, y: usize, alive: bool) {
-        if x < self.x_size && y < self.y_size {
-            self.data_two[x * self.y_size + y] = alive;
-        }
-    }
-
-    pub fn neighbours(&self, x: usize, y: usize) -> usize {
-        self.cell_at(x - 1, y - 1) as usize
-            + self.cell_at(x, y - 1) as usize
-            + self.cell_at(x + 1, y - 1) as usize
-            + self.cell_at(x - 1, y) as usize
-            + self.cell_at(x + 1, y) as usize
-            + self.cell_at(x - 1, y + 1) as usize
-            + self.cell_at(x, y + 1) as usize
-            + self.cell_at(x + 1, y + 1) as usize
-    }
-
-    pub fn update(&mut self) {
-        for x in 1..self.x_size - 1 {
-            for y in 1..self.y_size - 1 {
-                let neighbours = self.neighbours(x, y);
-
-                if self.cell_at(x, y) {
-                    match neighbours {
-                        ..2 | 4.. => self.set_cell_next(x, y, false),
-                        2..=3 => self.set_cell_next(x, y, true),
-                    }
-                } else {
-                    match neighbours {
-                        3 => self.set_cell_next(x, y, true),
-                        _ => self.set_cell_next(x, y, false),
-                    }
-                }
-            }
-        }
-
-        swap(&mut self.data, &mut self.data_two);
     }
 }
