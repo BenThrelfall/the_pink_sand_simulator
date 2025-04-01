@@ -1,14 +1,17 @@
 use std::{sync::Arc, time::Instant};
 
-use cells::cells::{
-    Cell,
-    CellKind::{self, *},
-    Cells,
+use cells::{
+    cells::{
+        Cell,
+        CellKind::{self, *},
+        Cells,
+    },
+    point::{point, Point, LEFT, UP},
 };
 use pixels::{Pixels, SurfaceTexture};
 use winit::{
     application::ApplicationHandler,
-    dpi::{PhysicalPosition, PhysicalSize},
+    dpi::{LogicalPosition, PhysicalPosition, PhysicalSize},
     event::WindowEvent,
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
     keyboard::KeyCode,
@@ -23,13 +26,7 @@ fn main() {
     let event_loop = EventLoop::new().unwrap();
     event_loop.set_control_flow(ControlFlow::Poll);
 
-    let mut cells = Cells::new(WIDTH as usize, HEIGHT as usize);
-
-    cells.set_cell(21, 22, Cell::new(Water));
-    cells.set_cell(20, 21, Cell::new(Water));
-    cells.set_cell(21, 21, Cell::new(Water));
-    cells.set_cell(21, 20, Cell::new(Water));
-    cells.set_cell(22, 20, Cell::new(Water));
+    let cells = Cells::new(WIDTH as usize, HEIGHT as usize);
 
     let mut app = App {
         window: Default::default(),
@@ -40,6 +37,7 @@ fn main() {
         cursor_pos: PhysicalPosition::new(0, 0),
         mouse_down: (false, false),
         place_cell: Sand,
+        place_size: 0,
     };
 
     event_loop.run_app(&mut app).unwrap();
@@ -55,6 +53,7 @@ struct App<'a> {
     cursor_pos: PhysicalPosition<u32>,
     mouse_down: (bool, bool),
     place_cell: CellKind,
+    place_size: i32,
 }
 
 impl ApplicationHandler for App<'_> {
@@ -102,11 +101,19 @@ impl ApplicationHandler for App<'_> {
                         .to_logical::<u32>(window.inner_size().width as f64 / WIDTH as f64);
 
                     match self.mouse_down {
-                        (true, _) => self.cells.set_cell(
-                            cursor.x as usize,
-                            cursor.y as usize,
-                            Cell::new(self.place_cell.clone()),
-                        ),
+                        (true, _) => {
+                            let mid = screen_to_world(cursor);
+                            let size = self.place_size;
+
+                            for n in -size..=size {
+                                for m in -size..=size {
+                                    self.cells.set_cell(
+                                        mid + n * UP + m * LEFT,
+                                        Cell::new(self.place_cell.clone()),
+                                    );
+                                }
+                            }
+                        }
                         (false, _) => (),
                     }
 
@@ -156,6 +163,18 @@ impl ApplicationHandler for App<'_> {
                     winit::keyboard::PhysicalKey::Code(KeyCode::Digit6),
                     winit::event::ElementState::Pressed,
                 ) => self.place_cell = PurpleSand,
+                (
+                    winit::keyboard::PhysicalKey::Code(KeyCode::Digit7),
+                    winit::event::ElementState::Pressed,
+                ) => self.place_cell = Bedrock,
+                (
+                    winit::keyboard::PhysicalKey::Code(KeyCode::KeyJ),
+                    winit::event::ElementState::Pressed,
+                ) => self.place_size += 1,
+                (
+                    winit::keyboard::PhysicalKey::Code(KeyCode::KeyK),
+                    winit::event::ElementState::Pressed,
+                ) => self.place_size = 0.max(self.place_size - 1),
                 _ => (),
             },
             WindowEvent::MouseInput {
@@ -188,11 +207,17 @@ impl ApplicationHandler for App<'_> {
 
                 match self.mouse_down {
                     (true, _) => {
-                        self.cells.set_cell(
-                            cursor.x as usize,
-                            cursor.y as usize,
-                            Cell::new(self.place_cell.clone()),
-                        );
+                        let mid = screen_to_world(cursor);
+                        let size = self.place_size;
+
+                        for n in -size..=size {
+                            for m in -size..=size {
+                                self.cells.set_cell(
+                                    mid + n * UP + m * LEFT,
+                                    Cell::new(self.place_cell.clone()),
+                                );
+                            }
+                        }
                     }
                     _ => (),
                 }
@@ -208,10 +233,14 @@ impl ApplicationHandler for App<'_> {
 fn draw(cells: &Cells, frame: &mut [u8]) {
     for (i, pixel) in frame.chunks_exact_mut(4).enumerate() {
         let x = i % WIDTH as usize;
-        let y = i / WIDTH as usize;
+        let y = HEIGHT as usize - (i / WIDTH as usize) - 1;
 
-        let rgba = cells.cell_at(x, y).colour();
+        let rgba = cells.cell_at(point(x as i32, y as i32)).colour();
 
         pixel.copy_from_slice(&rgba);
     }
+}
+
+fn screen_to_world(screen: LogicalPosition<u32>) -> Point {
+    point(screen.x as i32, (HEIGHT - screen.y) as i32)
 }
