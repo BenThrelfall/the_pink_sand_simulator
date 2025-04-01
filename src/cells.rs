@@ -1,49 +1,74 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use rand::{seq::SliceRandom, Rng};
 use CellKind::*;
 
 use crate::point::{
-    point, Point, DOWN, FALL_SLIDE_LEFT, FALL_SLIDE_RIGHT, FALL_TUMBLE_LEFT, FALL_TUMBLE_RIGHT,
-    LEFT, RIGHT, UP,
+    Point, CLOSED_NEIGHBOURS, DOWN, FALL_SLIDE_LEFT, FALL_SLIDE_RIGHT, FALL_TUMBLE_LEFT, FALL_TUMBLE_RIGHT, LEFT, RIGHT, UP
+};
+
+const GLOBAL_AIR: Cell = Cell {
+    swapped: false,
+    kind: Air,
 };
 
 #[derive(Debug, Clone)]
 struct CellData {
-    x_size: usize,
-    y_size: usize,
-    data: Vec<Cell>,
+    data: HashMap<Point, Cell>,
+    next_updates: HashSet<Point>,
 }
 
 impl CellData {
-    fn new(x_size: usize, y_size: usize) -> Self {
+    fn new() -> Self {
         Self {
-            x_size,
-            y_size,
-            data: vec![Cell::new(Air); x_size * y_size],
+            data: HashMap::new(),
+            next_updates: HashSet::new(),
         }
     }
 
     #[inline]
     pub fn cell_at(&self, point: Point) -> &Cell {
-        &self.data[point.index(self.y_size)]
+        self.data.get(&point).unwrap_or(&GLOBAL_AIR)
     }
 
     pub fn cell_at_mut(&mut self, point: Point) -> &mut Cell {
-        &mut self.data[point.index(self.y_size)]
+        self.data
+            .get_mut(&point)
+            .expect("You must know there is a cell here to use this method")
     }
 
     pub fn set_cell(&mut self, point: Point, cell: Cell) {
-        let (x, y) = point.utup();
-        if x < self.x_size && y < self.y_size {
-            self.data[x * self.y_size + y] = cell;
-        }
+        self.data.insert(point, cell);
+        self.changed(point);
     }
 
     pub fn swap_cells(&mut self, from: Point, to: Point) {
-        self.data[to.index(self.y_size)].swapped = true;
-        self.data
-            .swap(from.index(self.y_size), to.index(self.y_size));
+        let from_cell = self.data.remove(&from).unwrap();
+        let maybe_to_cell = self.data.remove(&to);
+
+        match maybe_to_cell {
+            Some(to_cell) => {
+                self.data.insert(from, to_cell);
+                self.cell_at_mut(from).swapped = true;
+            }
+            None => (),
+        };
+
+        self.data.insert(to, from_cell);
+        self.changed(to);
+        self.changed(from);
+    }
+
+    pub fn awaken(&mut self, point: Point) -> bool {
+        self.next_updates.insert(point);
+        true
+    }
+
+    pub fn changed(&mut self, point: Point) -> bool {
+        for offset in CLOSED_NEIGHBOURS {
+            self.next_updates.insert(point + offset);
+        } 
+        true
     }
 
     pub fn try_swap(&mut self, from: Point, to: Point) -> bool {
@@ -76,17 +101,13 @@ impl CellData {
 #[derive(Debug, Clone)]
 pub struct Cells {
     data: CellData,
-    index: Vec<Point>,
     skip: HashSet<Point>,
 }
 
 impl Cells {
-    pub fn new(x_size: usize, y_size: usize) -> Cells {
+    pub fn new() -> Cells {
         let out = Cells {
-            data: CellData::new(x_size, y_size),
-            index: (1..x_size as i32 - 1)
-                .flat_map(|n| (1..y_size as i32 - 1).map(move |m| point(n, m)))
-                .collect(),
+            data: CellData::new(),
             skip: HashSet::new(),
         };
 
@@ -103,26 +124,18 @@ impl Cells {
     }
 
     pub fn update_all(&mut self) {
-        let Cells { data, index, skip } = self;
+        let Cells { data, skip } = self;
 
-        index.shuffle(&mut rand::rng());
+        let mut updates = HashSet::new();
+        std::mem::swap(&mut updates, &mut data.next_updates);
+
+        //updates.shuffle(&mut rand::rng());
+
         skip.clear();
 
-        index.iter().copied().for_each(|x| {
-            if data.cell_at(x).is_air() {
-                skip.insert(x);
-            }
-        });
-
-        for x in 0..data.x_size {
-            skip.insert(point(x as i32, 0));
-        }
-
-        for point in self.index.iter().copied() {
+        for point in updates.iter().copied() {
             update_cell(data, skip, point);
         }
-
-        //println!("{}", self.data.data.iter().filter(|x| **x).count())
     }
 }
 
@@ -132,6 +145,11 @@ fn update_cell(data: &mut CellData, skip: &mut HashSet<Point>, point: Point) {
     }
 
     skip.insert(point);
+
+    if !data.data.contains_key(&point) {
+        return;
+    }
+
     data.cell_at_mut(point).swapped = false;
 
     match data.cell_at(point).kind {
@@ -159,7 +177,7 @@ fn water_update(data: &mut CellData, skip: &mut HashSet<Point>, point: Point) {
         FALL_SLIDE_LEFT
     };
 
-    data.multi_try_swap(point, &targets);
+    let _ = data.multi_try_swap(point, &targets) || data.awaken(point);
 }
 fn honey_update(data: &mut CellData, skip: &mut HashSet<Point>, point: Point) {
     update_cell(data, skip, point + DOWN);
@@ -172,7 +190,9 @@ fn honey_update(data: &mut CellData, skip: &mut HashSet<Point>, point: Point) {
         FALL_SLIDE_LEFT
     };
 
-    data.multi_try_swap(point, &targets);
+    if !data.multi_try_swap(point, &targets) {
+        data.awaken(point);
+    }
 }
 
 fn sand_update(data: &mut CellData, skip: &mut HashSet<Point>, point: Point) {
@@ -180,11 +200,9 @@ fn sand_update(data: &mut CellData, skip: &mut HashSet<Point>, point: Point) {
 
     let pref = rand::rng().random_bool(0.5);
 
-    if pref {
-        data.multi_try_swap(point, &FALL_TUMBLE_RIGHT);
-    } else {
-        data.multi_try_swap(point, &FALL_TUMBLE_LEFT);
-    }
+    let _ = pref && data.multi_try_swap(point, &FALL_TUMBLE_RIGHT)
+        || data.multi_try_swap(point, &FALL_TUMBLE_LEFT)
+        || data.awaken(point);
 }
 
 fn pink_sand_update(data: &mut CellData, _skip: &mut HashSet<Point>, point: Point) {

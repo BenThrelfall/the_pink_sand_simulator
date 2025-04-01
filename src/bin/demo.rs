@@ -6,7 +6,7 @@ use cells::{
         CellKind::{self, *},
         Cells,
     },
-    point::{point, Point, LEFT, UP},
+    point::{point, Point, DOWN, LEFT, RIGHT, UP},
 };
 use pixels::{Pixels, SurfaceTexture};
 use winit::{
@@ -26,7 +26,7 @@ fn main() {
     let event_loop = EventLoop::new().unwrap();
     event_loop.set_control_flow(ControlFlow::Poll);
 
-    let cells = Cells::new(WIDTH as usize, HEIGHT as usize);
+    let cells = Cells::new();
 
     let mut app = App {
         window: Default::default(),
@@ -38,6 +38,7 @@ fn main() {
         mouse_down: (false, false),
         place_cell: Sand,
         place_size: 0,
+        screen_pos: point(0, 0),
     };
 
     event_loop.run_app(&mut app).unwrap();
@@ -54,6 +55,7 @@ struct App<'a> {
     mouse_down: (bool, bool),
     place_cell: CellKind,
     place_size: i32,
+    screen_pos: Point,
 }
 
 impl ApplicationHandler for App<'_> {
@@ -126,7 +128,7 @@ impl ApplicationHandler for App<'_> {
                     println!("catch up {}!", updates);
                 }
 
-                draw(&self.cells, pixels.frame_mut());
+                draw(&self.cells, pixels.frame_mut(), self.screen_pos);
                 pixels.render().unwrap();
                 self.window.as_ref().unwrap().request_redraw();
             }
@@ -175,6 +177,22 @@ impl ApplicationHandler for App<'_> {
                     winit::keyboard::PhysicalKey::Code(KeyCode::KeyK),
                     winit::event::ElementState::Pressed,
                 ) => self.place_size = 0.max(self.place_size - 1),
+                (
+                    winit::keyboard::PhysicalKey::Code(KeyCode::KeyW),
+                    winit::event::ElementState::Pressed,
+                ) => self.screen_pos = self.screen_pos + UP,
+                (
+                    winit::keyboard::PhysicalKey::Code(KeyCode::KeyS),
+                    winit::event::ElementState::Pressed,
+                ) => self.screen_pos = self.screen_pos + DOWN,
+                (
+                    winit::keyboard::PhysicalKey::Code(KeyCode::KeyA),
+                    winit::event::ElementState::Pressed,
+                ) => self.screen_pos = self.screen_pos + LEFT,
+                (
+                    winit::keyboard::PhysicalKey::Code(KeyCode::KeyD),
+                    winit::event::ElementState::Pressed,
+                ) => self.screen_pos = self.screen_pos + RIGHT,
                 _ => (),
             },
             WindowEvent::MouseInput {
@@ -230,12 +248,14 @@ impl ApplicationHandler for App<'_> {
     }
 }
 
-fn draw(cells: &Cells, frame: &mut [u8]) {
+fn draw(cells: &Cells, frame: &mut [u8], screen_pos: Point) {
     for (i, pixel) in frame.chunks_exact_mut(4).enumerate() {
         let x = i % WIDTH as usize;
         let y = HEIGHT as usize - (i / WIDTH as usize) - 1;
 
-        let rgba = cells.cell_at(point(x as i32, y as i32)).colour();
+        let rgba = cells
+            .cell_at(point(x as i32, y as i32) + screen_pos)
+            .colour();
 
         pixel.copy_from_slice(&rgba);
     }

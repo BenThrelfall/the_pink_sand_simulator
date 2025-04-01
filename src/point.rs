@@ -16,6 +16,18 @@ pub const FALL_SLIDE_RIGHT: [Point; 5] = [
     point(-1, 0),
 ];
 
+pub const CLOSED_NEIGHBOURS: [Point; 9] = [
+    point(-1, -1),
+    point(-1, 0),
+    point(-1, 1),
+    point(0, 1),
+    point(0, 0),
+    point(0, -1),
+    point(1, 1),
+    point(1, 0),
+    point(1, -1),
+];
+
 pub const FALL_TUMBLE_LEFT: [Point; 3] = [point(0, -1), point(-1, -1), point(1, -1)];
 
 pub const FALL_TUMBLE_RIGHT: [Point; 3] = [point(0, -1), point(1, -1), point(-1, -1)];
