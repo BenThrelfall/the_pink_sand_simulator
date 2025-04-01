@@ -170,6 +170,10 @@ impl ApplicationHandler for App<'_> {
                     winit::event::ElementState::Pressed,
                 ) => self.place_cell = Bedrock,
                 (
+                    winit::keyboard::PhysicalKey::Code(KeyCode::Digit8),
+                    winit::event::ElementState::Pressed,
+                ) => self.place_cell = Hydrogen,
+                (
                     winit::keyboard::PhysicalKey::Code(KeyCode::KeyJ),
                     winit::event::ElementState::Pressed,
                 ) => self.place_size += 1,

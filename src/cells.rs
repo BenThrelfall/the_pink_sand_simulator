@@ -4,7 +4,7 @@ use rand::Rng;
 use CellKind::*;
 
 use crate::point::{
-    Point, CLOSED_NEIGHBOURS, DOWN, FALL_SLIDE_LEFT, FALL_SLIDE_RIGHT, FALL_TUMBLE_LEFT, FALL_TUMBLE_RIGHT, LEFT, RIGHT, UP
+    Point, CLOSED_NEIGHBOURS, DOWN, FALL_SLIDE_LEFT, FALL_SLIDE_RIGHT, FALL_TUMBLE_LEFT, FALL_TUMBLE_RIGHT, LEFT, RIGHT, RISE_SLIDE_LEFT, RISE_SLIDE_RIGHT, SLIDE_LEFT, SLIDE_RIGHT, UP
 };
 
 const GLOBAL_AIR: Cell = Cell {
@@ -161,7 +161,28 @@ fn update_cell(data: &mut CellData, skip: &mut HashSet<Point>, point: Point) {
         PurpleSand => purple_sand_update(data, skip, point),
         BlueSand => blue_sand_update(data, skip, point),
         Bedrock => (),
+        Hydrogen => hydrogen_update(data, skip, point),
     }
+}
+
+fn hydrogen_update(data: &mut CellData, skip: &mut HashSet<Point>, point: Point) {
+    update_cell(data, skip, point + UP);
+    update_cell(data, skip, point + RIGHT);
+    update_cell(data, skip, point + LEFT);
+
+    let pref = rand::rng().random_range(1..=10);
+
+    let targets = match pref {
+        1..=3 => &RISE_SLIDE_LEFT,
+        4..=6 => &RISE_SLIDE_RIGHT,
+        7 => SLIDE_LEFT.as_slice(),
+        8 => &SLIDE_RIGHT,
+        9 => &FALL_SLIDE_LEFT,
+        10 => &FALL_SLIDE_RIGHT,
+        _ => panic!(),
+    };
+
+    let _ = data.multi_try_swap(point, targets) || data.awaken(point);
 }
 
 fn water_update(data: &mut CellData, skip: &mut HashSet<Point>, point: Point) {
@@ -274,10 +295,10 @@ impl Cell {
             PinkSand => [160, 80, 110, 255],
             Sand => [200, 100, 50, 255],
             Air => [200, 200, 235, 255],
-            //Air => [10, 10, 10, 255],
             PurpleSand => [120, 80, 180, 255],
             BlueSand => [90, 70, 210, 255],
             Bedrock => [13, 39, 20, 255],
+            Hydrogen => [230, 230, 230, 255],
         }
     }
 
@@ -291,6 +312,7 @@ impl Cell {
             PinkSand => 30,
             Air => 0,
             Bedrock => 500,
+            Hydrogen => 5,
         }
     }
 }
@@ -305,4 +327,5 @@ pub enum CellKind {
     PinkSand,
     Air,
     Bedrock,
+    Hydrogen,
 }

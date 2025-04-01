@@ -16,6 +16,32 @@ pub const FALL_SLIDE_RIGHT: [Point; 5] = [
     point(-1, 0),
 ];
 
+pub const RISE_SLIDE_LEFT: [Point; 5] = [
+    point(0, 1),
+    point(-1, 1),
+    point(1, 1),
+    point(-1, 0),
+    point(1, 0),
+];
+
+pub const SLIDE_LEFT: [Point; 2] = [
+    point(-1, 0),
+    point(1, 0),
+];
+
+pub const SLIDE_RIGHT: [Point; 2] = [
+    point(-1, 0),
+    point(1, 0),
+];
+
+pub const RISE_SLIDE_RIGHT: [Point; 5] = [
+    point(0, 1),
+    point(1, 1),
+    point(-1, 1),
+    point(1, 0),
+    point(-1, 0),
+];
+
 pub const CLOSED_NEIGHBOURS: [Point; 9] = [
     point(-1, -1),
     point(-1, 0),
