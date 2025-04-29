@@ -1,6 +1,6 @@
 use std::{sync::Arc, time::Instant};
 
-use cells::{
+use the_pink_sand_simulator::{
     cells::{
         Cell,
         CellKind::{self, *},
