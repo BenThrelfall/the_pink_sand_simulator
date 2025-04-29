@@ -1,4 +1,8 @@
-use std::{sync::Arc, time::Instant};
+use std::{
+    ops::{Add, Div, Sub},
+    sync::Arc,
+    time::Instant,
+};
 
 use cells::{
     cells::{
@@ -8,7 +12,7 @@ use cells::{
     },
     point::{point, Point, DOWN, LEFT, RIGHT, UP},
 };
-use pixels::{Pixels, SurfaceTexture};
+use pixels::{wgpu::Color, Pixels, SurfaceTexture};
 use winit::{
     application::ApplicationHandler,
     dpi::{LogicalPosition, PhysicalPosition, PhysicalSize},
@@ -39,6 +43,8 @@ fn main() {
         place_cell: Sand,
         place_size: 0,
         screen_pos: point(0, 0),
+        view: RenderMode::Normal,
+        frame_adjust: 0.0,
     };
 
     event_loop.run_app(&mut app).unwrap();
@@ -56,6 +62,27 @@ struct App<'a> {
     place_cell: CellKind,
     place_size: i32,
     screen_pos: Point,
+    frame_adjust: f64,
+    view: RenderMode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RenderMode {
+    Normal,
+    Thermal,
+    Updates,
+}
+
+impl RenderMode {
+    fn next(&mut self) {
+        use RenderMode::*;
+
+        *self = match self {
+            Normal => Thermal,
+            Thermal => Updates,
+            Updates => Normal,
+        }
+    }
 }
 
 impl ApplicationHandler for App<'_> {
@@ -121,14 +148,15 @@ impl ApplicationHandler for App<'_> {
 
                     self.cells.update_all();
 
-                    self.logical_time += 1. / 15.;
+                    self.logical_time += 1. / (15. - self.frame_adjust);
                 }
 
                 if updates > 1 {
                     println!("catch up {}!", updates);
                 }
 
-                draw(&self.cells, pixels.frame_mut(), self.screen_pos);
+                draw(&self.cells, pixels.frame_mut(), self.screen_pos, self.view);
+
                 pixels.render().unwrap();
                 self.window.as_ref().unwrap().request_redraw();
             }
@@ -174,6 +202,10 @@ impl ApplicationHandler for App<'_> {
                     winit::event::ElementState::Pressed,
                 ) => self.place_cell = Hydrogen,
                 (
+                    winit::keyboard::PhysicalKey::Code(KeyCode::Digit9),
+                    winit::event::ElementState::Pressed,
+                ) => self.place_cell = LiquidNitrogen,
+                (
                     winit::keyboard::PhysicalKey::Code(KeyCode::KeyJ),
                     winit::event::ElementState::Pressed,
                 ) => self.place_size += 1,
@@ -197,6 +229,18 @@ impl ApplicationHandler for App<'_> {
                     winit::keyboard::PhysicalKey::Code(KeyCode::KeyD),
                     winit::event::ElementState::Pressed,
                 ) => self.screen_pos = self.screen_pos + RIGHT,
+                (
+                    winit::keyboard::PhysicalKey::Code(KeyCode::KeyT),
+                    winit::event::ElementState::Pressed,
+                ) => self.view.next(),
+                (
+                    winit::keyboard::PhysicalKey::Code(KeyCode::Equal),
+                    winit::event::ElementState::Pressed,
+                ) => self.frame_adjust = self.frame_adjust.sub(1.0).max(0.0),
+                (
+                    winit::keyboard::PhysicalKey::Code(KeyCode::Minus),
+                    winit::event::ElementState::Pressed,
+                ) => self.frame_adjust = self.frame_adjust.add(1.0).min(14.0),
                 _ => (),
             },
             WindowEvent::MouseInput {
@@ -252,14 +296,27 @@ impl ApplicationHandler for App<'_> {
     }
 }
 
-fn draw(cells: &Cells, frame: &mut [u8], screen_pos: Point) {
+fn draw(cells: &Cells, frame: &mut [u8], screen_pos: Point, render_mode: RenderMode) {
     for (i, pixel) in frame.chunks_exact_mut(4).enumerate() {
         let x = i % WIDTH as usize;
         let y = HEIGHT as usize - (i / WIDTH as usize) - 1;
 
-        let rgba = cells
-            .cell_at(point(x as i32, y as i32) + screen_pos)
-            .colour();
+        let cell_pos = point(x as i32, y as i32) + screen_pos;
+
+        let rgba = match render_mode {
+            RenderMode::Normal => cells.cell_at(cell_pos).colour(),
+            RenderMode::Thermal => {
+                let heat = cells.cell_at(cell_pos).heat.div(2.0) as u8;
+                [heat, 0, 255 - heat, 255]
+            }
+            RenderMode::Updates => {
+                if cells.was_update(cell_pos) {
+                    [230, 230, 230, 255]
+                } else {
+                    [0, 0, 0, 255]
+                }
+            }
+        };
 
         pixel.copy_from_slice(&rgba);
     }

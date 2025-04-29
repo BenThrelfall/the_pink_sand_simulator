@@ -4,12 +4,15 @@ use rand::Rng;
 use CellKind::*;
 
 use crate::point::{
-    Point, CLOSED_NEIGHBOURS, DOWN, FALL_SLIDE_LEFT, FALL_SLIDE_RIGHT, FALL_TUMBLE_LEFT, FALL_TUMBLE_RIGHT, LEFT, RIGHT, RISE_SLIDE_LEFT, RISE_SLIDE_RIGHT, SLIDE_LEFT, SLIDE_RIGHT, UP
+    Point, CLOSED_NEIGHBOURS, DOWN, FALL_SLIDE_LEFT, FALL_SLIDE_RIGHT, FALL_TUMBLE_LEFT,
+    FALL_TUMBLE_RIGHT, LEFT, OPEN_NEIGHBOURS, RIGHT, RISE_SLIDE_LEFT, RISE_SLIDE_RIGHT, SLIDE_LEFT,
+    SLIDE_RIGHT, UP,
 };
 
 const GLOBAL_AIR: Cell = Cell {
     swapped: false,
     kind: Air,
+    heat: 293.0,
 };
 
 #[derive(Debug, Clone)]
@@ -67,7 +70,7 @@ impl CellData {
     pub fn changed(&mut self, point: Point) -> bool {
         for offset in CLOSED_NEIGHBOURS {
             self.next_updates.insert(point + offset);
-        } 
+        }
         true
     }
 
@@ -96,6 +99,38 @@ impl CellData {
 
         false
     }
+
+    pub fn conduct(&mut self, point: Point) {
+        if !self.data.contains_key(&point) {
+            return;
+        }
+
+        let start_heat = self.cell_at(point).heat;
+
+        for offset in OPEN_NEIGHBOURS {
+            self.heat_exchange(point, point + offset, start_heat);
+        }
+    }
+
+    fn heat_exchange(&mut self, point: Point, other: Point, start_heat: f32) {
+        let conduction = self.cell_at(point).conduction() + self.cell_at(other).conduction();
+        let conduction = 0.01 * conduction;
+
+        let from_delta = self.cell_at(other).heat * conduction;
+
+        self.cell_at_mut(point).heat -= conduction * start_heat;
+        self.cell_at_mut(point).heat += from_delta;
+
+        let CellData { data, next_updates } = self;
+
+        let cell = data.entry(other).or_insert_with(|| {
+            next_updates.insert(other);
+            Cell::new(Air)
+        });
+
+        cell.heat += conduction * start_heat;
+        cell.heat -= from_delta;
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -119,6 +154,10 @@ impl Cells {
         self.data.cell_at(point)
     }
 
+    pub fn was_update(&self, point: Point) -> bool {
+        self.data.next_updates.contains(&point)
+    }
+
     pub fn set_cell(&mut self, point: Point, cell: Cell) {
         self.data.set_cell(point, cell);
     }
@@ -129,12 +168,15 @@ impl Cells {
         let mut updates = HashSet::new();
         std::mem::swap(&mut updates, &mut data.next_updates);
 
+        println!("{}", updates.len());
+
         //updates.shuffle(&mut rand::rng());
 
         skip.clear();
 
         for point in updates.iter().copied() {
             update_cell(data, skip, point);
+            data.conduct(point);
         }
     }
 }
@@ -152,17 +194,43 @@ fn update_cell(data: &mut CellData, skip: &mut HashSet<Point>, point: Point) {
 
     data.cell_at_mut(point).swapped = false;
 
+    // Movement Update
     match data.cell_at(point).kind {
         Water => water_update(data, skip, point),
         Honey => honey_update(data, skip, point),
         Sand => sand_update(data, skip, point),
         PinkSand => pink_sand_update(data, skip, point),
-        Air => (),
+        Air => air_update(data, skip, point),
         PurpleSand => purple_sand_update(data, skip, point),
         BlueSand => blue_sand_update(data, skip, point),
         Bedrock => (),
         Hydrogen => hydrogen_update(data, skip, point),
+        LiquidNitrogen => liquid_nitrogen_update(data, skip, point),
+        Nitrogen => nitrogen_update(data, skip, point),
     }
+}
+
+fn air_update(data: &mut CellData, skip: &mut HashSet<Point>, point: Point) {
+    let heat = data.cell_at(point).heat;
+
+    if (heat - 293.0).abs() < 5.0 {
+        data.data.remove(&point);
+        return;
+    }
+
+    let pref = rand::rng().random_range(1..=10);
+
+    let targets = match pref {
+        1..=3 => &RISE_SLIDE_LEFT,
+        4..=6 => &RISE_SLIDE_RIGHT,
+        7 => SLIDE_LEFT.as_slice(),
+        8 => &SLIDE_RIGHT,
+        9 => &FALL_SLIDE_LEFT,
+        10 => &FALL_SLIDE_RIGHT,
+        _ => panic!(),
+    };
+
+    let _ = data.multi_try_swap(point, targets) || data.awaken(point);
 }
 
 fn hydrogen_update(data: &mut CellData, skip: &mut HashSet<Point>, point: Point) {
@@ -183,6 +251,70 @@ fn hydrogen_update(data: &mut CellData, skip: &mut HashSet<Point>, point: Point)
     };
 
     let _ = data.multi_try_swap(point, targets) || data.awaken(point);
+}
+
+fn nitrogen_update(data: &mut CellData, skip: &mut HashSet<Point>, point: Point) {
+    let heat = data.cell_at(point).heat;
+
+    if heat < 77.0 {
+        let new = Cell {
+            swapped: false,
+            heat: heat,
+            kind: LiquidNitrogen,
+        };
+
+        *data.cell_at_mut(point) = new;
+        data.awaken(point);
+        return;
+    }
+
+    update_cell(data, skip, point + UP);
+    update_cell(data, skip, point + RIGHT);
+    update_cell(data, skip, point + LEFT);
+
+    let pref = rand::rng().random_range(1..=10);
+
+    let targets = match pref {
+        1..=3 => &RISE_SLIDE_LEFT,
+        4..=6 => &RISE_SLIDE_RIGHT,
+        7 => SLIDE_LEFT.as_slice(),
+        8 => &SLIDE_RIGHT,
+        9 => &FALL_SLIDE_LEFT,
+        10 => &FALL_SLIDE_RIGHT,
+        _ => panic!(),
+    };
+
+    let _ = data.multi_try_swap(point, targets) || data.awaken(point);
+}
+
+fn liquid_nitrogen_update(data: &mut CellData, skip: &mut HashSet<Point>, point: Point) {
+    let heat = data.cell_at(point).heat;
+
+    if heat > 85.0 {
+        let new = Cell {
+            swapped: false,
+            heat: heat - 5.0,
+            kind: Nitrogen,
+        };
+
+        *data.cell_at_mut(point) = new;
+        data.awaken(point);
+        return;
+    }
+
+    update_cell(data, skip, point + DOWN);
+    update_cell(data, skip, point + RIGHT);
+    update_cell(data, skip, point + LEFT);
+
+    let pref = rand::rng().random_bool(0.5);
+
+    let targets = if pref {
+        FALL_SLIDE_RIGHT
+    } else {
+        FALL_SLIDE_LEFT
+    };
+
+    let _ = data.multi_try_swap(point, &targets) || data.awaken(point);
 }
 
 fn water_update(data: &mut CellData, skip: &mut HashSet<Point>, point: Point) {
@@ -256,9 +388,11 @@ fn blue_sand_update(data: &mut CellData, skip: &mut HashSet<Point>, point: Point
         || data.multi_try_swap(point, &FALL_TUMBLE_LEFT)
         || data.try_swap(point, point + UP);
 }
+
 #[derive(Debug, Clone)]
 pub struct Cell {
     swapped: bool,
+    pub heat: f32,
     kind: CellKind,
 }
 
@@ -267,6 +401,7 @@ impl Cell {
         Cell {
             kind,
             swapped: false,
+            heat: Self::initial_heat(kind),
         }
     }
 
@@ -299,6 +434,8 @@ impl Cell {
             BlueSand => [90, 70, 210, 255],
             Bedrock => [13, 39, 20, 255],
             Hydrogen => [230, 230, 230, 255],
+            LiquidNitrogen => [80, 80, 200, 255],
+            Nitrogen => [230, 230, 230, 255],
         }
     }
 
@@ -310,14 +447,39 @@ impl Cell {
             Honey => 28,
             Sand => 30,
             PinkSand => 30,
-            Air => 0,
+            Air => match self.heat {
+                ..100.0 => 4,
+                100.0..150.0 => 3,
+                150.0..200.0 => 2,
+                200.0..250.0 => 1,
+                250.0.. => 0,
+                _ => 0,
+            },
             Bedrock => 500,
             Hydrogen => 5,
+            LiquidNitrogen => 24,
+            Nitrogen => 7,
+        }
+    }
+
+    pub fn conduction(&self) -> f32 {
+        match self.kind {
+            Water => 1.0,
+            Sand => 0.05,
+            Bedrock => 0.01,
+            _ => 0.1,
+        }
+    }
+
+    fn initial_heat(cell: CellKind) -> f32 {
+        match cell {
+            LiquidNitrogen => 50.0,
+            _ => 293.0,
         }
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum CellKind {
     PurpleSand,
     BlueSand,
@@ -328,4 +490,6 @@ pub enum CellKind {
     Air,
     Bedrock,
     Hydrogen,
+    LiquidNitrogen,
+    Nitrogen,
 }
