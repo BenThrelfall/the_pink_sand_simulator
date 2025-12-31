@@ -1,9 +1,8 @@
 [package]
 name = "the_pink_sand_simulator"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
-pixels = "0.15.0"
+macroquad = "0.4.14"
 rand = "0.9.0"
-winit = "0.30.9"
