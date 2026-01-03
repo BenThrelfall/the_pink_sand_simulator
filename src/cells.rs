@@ -262,6 +262,10 @@ pub struct Cell {
     kind: CellKind,
 }
 
+pub fn cell(kind: CellKind) -> Cell {
+    Cell::new(kind)
+}
+
 impl Cell {
     pub fn new(kind: CellKind) -> Cell {
         Cell {

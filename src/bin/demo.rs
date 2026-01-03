@@ -1,15 +1,11 @@
-pub mod cells;
-pub mod input;
-pub mod point;
-
-use std::{ops::Div, rc::Rc, time::Instant};
+use std::{rc::Rc, time::Instant};
 
 use macroquad::prelude::*;
 
-use crate::{
-    cells::{Cell, Cells},
+use the_pink_sand_simulator::{
+    cells::{self, Cell, CellKind::*, Cells, cell},
     input::{Ina, InputManager},
-    point::{point, Point},
+    point::{Point, point},
 };
 
 const WIDTH: u32 = 1600;
@@ -48,22 +44,10 @@ async fn main() {
 
     let mut cells = Cells::new();
 
-    for r in 0..700 {
-        let base_x = (100. * (r as f32).div(100.).sin()) as i32;
-        let base_y = (100. * (r as f32).div(100.).cos()) as i32;
-        for x in 0..10 {
-            for y in 0..10 {
-                cells.set_cell(
-                    point(base_x + x, base_y + y),
-                    Cell::new(cells::CellKind::Bedrock),
-                );
-            }
-        }
-    }
-
-    for x in -50..50 {
-        for y in -50..50 {
-            cells.set_cell(point(x, 100 + y), Cell::new(cells::CellKind::Water));
+    for y in 10..100 {
+        for x in -50..50 {
+            let offset = y % 2;
+            cells.set_cell(point(2 * x + offset, y * -10), cell(Bedrock));
         }
     }
 
@@ -119,10 +103,8 @@ async fn main() {
         draw_text(&mouse.to_string(), 30., 130., 36., WHITE);
         draw_fps();
 
-        for x in -5..5 {
-            for y in -5..5 {
-                cells.set_cell(point(x, 400 + y), Cell::new(cells::CellKind::Water));
-            }
+        for x in -1..=1 {
+            cells.set_cell(point(x, 0), cell(Water));
         }
 
         let timer = Instant::now();
