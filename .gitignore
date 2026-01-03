@@ -1,2 +1,6 @@
 /target
 rustfmt.toml
+
+# Flamegraph
+*.svg
+perf.data*
