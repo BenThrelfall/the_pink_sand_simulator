@@ -27,10 +27,12 @@ impl CellData {
     }
 
     #[inline]
-    pub fn cell_at(&self, point: Point) -> &Cell {
-        self.data.get(&point).unwrap_or(&GLOBAL_AIR)
+    pub fn cell_at(&self, point: Point) -> Cell {
+        self.data.get(&point).copied().unwrap_or(GLOBAL_AIR)
     }
 
+    /// Constraints
+    /// - `point` must be a non-global-air cell location
     pub fn cell_at_mut(&mut self, point: Point) -> &mut Cell {
         self.data
             .get_mut(&point)
@@ -42,16 +44,21 @@ impl CellData {
         self.changed(point);
     }
 
+    /// Constraints
+    /// - `from` must be a non-global-air cell location
     pub fn swap_cells(&mut self, from: Point, to: Point) {
-        let from_cell = self.data.remove(&from).unwrap();
-        let maybe_to_cell = self.data.remove(&to);
+
+        let from_cell = self.cell_at(from);
+        let maybe_to_cell = self.data.get(&to);
 
         match maybe_to_cell {
-            Some(to_cell) => {
+            Some(&to_cell) => {
                 self.data.insert(from, to_cell);
                 self.cell_at_mut(from).swapped = true;
             }
-            None => (),
+            None => {
+                self.data.remove(&from);
+            },
         };
 
         self.data.insert(to, from_cell);
@@ -117,7 +124,7 @@ impl Cells {
     }
 
     #[inline]
-    pub fn cell_at(&self, point: Point) -> &Cell {
+    pub fn cell_at(&self, point: Point) -> Cell {
         self.data.cell_at(point)
     }
 
@@ -258,7 +265,7 @@ fn blue_sand_update(data: &mut CellData, skip: &mut HashSet<Point>, point: Point
         || data.multi_try_swap(point, &FALL_TUMBLE_LEFT)
         || data.try_swap(point, point + UP);
 }
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct Cell {
     swapped: bool,
     kind: CellKind,
@@ -323,7 +330,7 @@ impl Cell {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum CellKind {
     PurpleSand,
     BlueSand,
