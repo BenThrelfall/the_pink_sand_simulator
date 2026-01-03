@@ -102,6 +102,7 @@ impl CellData {
 pub struct Cells {
     data: CellData,
     skip: HashSet<Point>,
+    current_updates: HashSet<Point>,
 }
 
 impl Cells {
@@ -109,6 +110,7 @@ impl Cells {
         let out = Cells {
             data: CellData::new(),
             skip: HashSet::new(),
+            current_updates: HashSet::new(),
         };
 
         out
@@ -124,16 +126,16 @@ impl Cells {
     }
 
     pub fn update_all(&mut self) {
-        let Cells { data, skip } = self;
+        let Cells { data, skip, current_updates } = self;
 
-        let mut updates = HashSet::new();
-        std::mem::swap(&mut updates, &mut data.next_updates);
+        std::mem::swap(current_updates, &mut data.next_updates);
+        data.next_updates.clear();
 
         //updates.shuffle(&mut rand::rng());
 
         skip.clear();
 
-        for point in updates.iter().copied() {
+        for point in current_updates.iter().copied() {
             update_cell(data, skip, point);
         }
     }
